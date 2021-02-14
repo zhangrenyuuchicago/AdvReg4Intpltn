@@ -80,7 +80,7 @@ def loss4ae(x, rec_x, critic_x_alpha):
 
 def loss4critic(critic_x_alpha, alpha, critic_inter_x_rec_x):
     sq_loss = F.mse_loss(critic_x_alpha, alpha, reduction='mean')
-    critic_loss = critic_x_alpha.pow(2).mean()
+    critic_loss = critic_inter_x_rec_x.pow(2).mean()
     return sq_loss + critic_loss
 
 def train(args, encoder, decoder, critic, device, train_loader, ae_opt, critic_opt, epoch):

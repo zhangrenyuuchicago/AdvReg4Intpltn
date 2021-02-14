@@ -10,5 +10,5 @@ The clustering accuracy and single layer classifier accuracy are
 
 Model | clustering accuracy | single layer classifier accuracy
 -------------------- | --------------------- | ---------------------
-ae | 0.817 | 0.959
-acae | 0.884 | 0.960
+ae | 0.846 | 0.963
+acae | 0.913 | 0.972

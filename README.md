@@ -2,11 +2,13 @@
 
 This pytorch repo trys to reproduce the result of "[Understanding and Improving Interpolation in Autoencoders via an Adversarial Regularizer](http://arxiv.org/abs/1807.07543)" by David Berthelot, Colin Raffel, Aurko Roy, and Ian Goodfellow. The original repo is https://github.com/brain-research/acai .
 
-The architure of DNN is different from the original repo. Here we use a very simple encoder, decoder and critic NN. I guess this is the reason for performance gap.
+The architure of DNN is borrowed from the pytorch version repo repo
+
+https://gist.github.com/kylemcdonald/e8ca989584b3b0e6526c0a737ed412f0
 
 The clustering accuracy and single layer classifier accuracy are
 
 Model | clustering accuracy | single layer classifier accuracy
 -------------------- | --------------------- | ---------------------
-ae | 0.655 | 0.887 
-acae | 0.6807 | 0.902
+ae | 0.817 | 0.959
+acae | 0.884 | 0.960

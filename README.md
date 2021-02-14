@@ -2,7 +2,7 @@
 
 This pytorch repo trys to reproduce the result of "[Understanding and Improving Interpolation in Autoencoders via an Adversarial Regularizer](http://arxiv.org/abs/1807.07543)" by David Berthelot, Colin Raffel, Aurko Roy, and Ian Goodfellow. The original repo is https://github.com/brain-research/acai .
 
-The architure of DNN is borrowed from the pytorch version repo repo
+The architure of DNN is borrowed from the pytorch version repo
 
 https://gist.github.com/kylemcdonald/e8ca989584b3b0e6526c0a737ed412f0
 

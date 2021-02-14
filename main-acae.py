@@ -9,68 +9,69 @@ from torch.optim.lr_scheduler import StepLR
 import csv
 from tensorboardX import SummaryWriter
 from datetime import datetime
+import math
+import numpy as np
 
 GAMMA=0.2
 LAMBDA=0.5
+
+
 
 now = datetime.now()
 current_time = now.strftime("%H:%M:%S")
 writer = SummaryWriter(logdir=f'acae_log/acae_log_{current_time}')
 
-class Critic(nn.Module):
-    def __init__(self):
-        super(Critic, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
-        self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, 1)
+activation = nn.LeakyReLU
 
+# authors use this initializer, but it doesn't seem essential
+def Initializer(layers, slope=0.2):
+    for layer in layers:
+        if hasattr(layer, 'weight'):
+            w = layer.weight.data
+            std = 1/np.sqrt((1 + slope**2) * np.prod(w.shape[:-1]))
+            w.normal_(std=std)  
+        if hasattr(layer, 'bias'):
+            layer.bias.data.zero_()
+
+def Encoder(scales, depth, latent, colors):
+    layers = []
+    layers.append(nn.Conv2d(colors, depth, 1, padding=1))
+    kp = depth
+    for scale in range(scales):
+        k = depth << scale
+        layers.extend([nn.Conv2d(kp, k, 3, padding=1), activation()])
+        layers.extend([nn.Conv2d(k, k, 3, padding=1), activation()])
+        layers.append(nn.AvgPool2d(2))
+        kp = k
+    k = depth << scales
+    layers.extend([nn.Conv2d(kp, k, 3, padding=1), activation()])
+    layers.append(nn.Conv2d(k, latent, 3, padding=1))
+    Initializer(layers)
+    return nn.Sequential(*layers)
+
+def Decoder(scales, depth, latent, colors):
+    layers = []
+    kp = latent
+    for scale in range(scales - 1, -1, -1):
+        k = depth << scale
+        layers.extend([nn.Conv2d(kp, k, 3, padding=1), activation()])
+        layers.extend([nn.Conv2d(k, k, 3, padding=1), activation()])
+        layers.append(nn.Upsample(scale_factor=2))
+        kp = k
+    layers.extend([nn.Conv2d(kp, depth, 3, padding=1), activation()])
+    layers.append(nn.Conv2d(depth, colors, 3, padding=1))
+    Initializer(layers)
+    return nn.Sequential(*layers)
+
+class Discriminator(nn.Module):
+    def __init__(self, scales, depth, latent, colors):
+        super().__init__()
+        self.encoder = Encoder(scales, depth, latent, colors)
+        
     def forward(self, x):
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = F.max_pool2d(x, 2)
-        x = self.dropout1(x)
-        x = torch.flatten(x, 1)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.dropout2(x)
-        x = self.fc2(x)
-        output = F.log_softmax(x, dim=1)
-        return output
-
-class Encoder(nn.Module):
-    def __init__(self):
-        super(Encoder, self).__init__()
-        self.encode = nn.Sequential(# like the Composition layer you built
-                nn.Conv2d(1, 4, 3, stride=2, padding=1),
-                nn.LeakyReLU(),
-	        nn.Conv2d(4, 8, 3, stride=2, padding=1),
-	        nn.LeakyReLU(),
-	        nn.Conv2d(8, 16, 7)
-	    )
-    
-    def forward(self, x):
-        h = self.encode(x)
-        return h
-
-class Decoder(nn.Module):
-    def __init__(self):
-        super(Decoder, self).__init__()
-        self.decode = nn.Sequential(
-                nn.ConvTranspose2d(16, 8, 7),
-	        nn.LeakyReLU(),
-	        nn.ConvTranspose2d(8, 4, 3, stride=2, padding=1, output_padding=1),
-	        nn.LeakyReLU(),
-	        nn.ConvTranspose2d(4, 1, 3, stride=2, padding=1, output_padding=1),
-	        nn.Sigmoid()
-	    )
-
-    def forward(self, h):
-        x = self.decode(h)
+        x = self.encoder(x)
+        x = x.reshape(x.shape[0], -1)
+        x = torch.mean(x, -1)
         return x
 
 def loss4ae(x, rec_x, critic_x_alpha):
@@ -111,6 +112,9 @@ def train(args, encoder, decoder, critic, device, train_loader, ae_opt, critic_o
         inter_x1_rec_x1 = GAMMA*data + (1.0-GAMMA)*rec_x1
         critic_inter_x1_rec_x1 = critic(inter_x1_rec_x1)
         
+        #critic_inter_x1_rec_x1 = critic_inter_x1_rec_x1.view((alpha.size(0), -1))
+        alpha = alpha.view((-1))
+
         critic_loss = loss4critic(critic_x_alpha, alpha, critic_inter_x1_rec_x1)
         sum_critic_loss += critic_loss.cpu().data.numpy()
         
@@ -219,12 +223,12 @@ def main():
             help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
             help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=50, metavar='N',
-            help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
-            help='learning rate (default: 1.0)')
-    parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
-            help='Learning rate step gamma (default: 0.7)')
+    parser.add_argument('--epochs', type=int, default=100, metavar='N',
+            help='number of epochs to train (default: 100)')
+    parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
+            help='learning rate (default: 0.0001)')
+    #parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
+    #        help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
             help='disables CUDA training')
     parser.add_argument('--dry-run', action='store_true', default=False,
@@ -235,6 +239,23 @@ def main():
             help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
             help='For Saving the current Model')
+    parser.add_argument('--width', type=int, default=32,
+            help='width (default: 32)')
+    parser.add_argument('--latent_width', type=int, default=4,
+            help='latent_width (default: 4)')
+    parser.add_argument('--depth', type=int, default=16,
+            help='depth (default: 16)')
+    parser.add_argument('--advdepth', type=int, default=16,
+            help='advdepth (default: 16)')
+    parser.add_argument('--advweight', type=float, default=0.5,
+            help='advweight (default: 0.5)')
+    parser.add_argument('--reg', type=float, default=0.2,
+            help='reg (default: 0.2)')
+    parser.add_argument('--latent', type=int, default=2,
+            help='latent (default: 2)')
+    parser.add_argument('--colors', type=int, default=1,
+            help='colors (default: 1)')
+  
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -250,6 +271,7 @@ def main():
         test_kwargs.update(cuda_kwargs)
 
     transform=transforms.Compose([
+            transforms.Resize((24, 24)),
             transforms.ToTensor(),
             #transforms.Normalize((0.1307,), (0.3081,))
             ])
@@ -259,24 +281,32 @@ def main():
             transform=transform)
     train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
+     
+    args_set = {
+    'epochs': 100,
+    'width': 32,
+    'latent_width': 4,
+    'depth': 16,
+    'advdepth': 16,
+    'advweight': 0.5,
+    'reg': 0.2,
+    'latent': 2,
+    'colors': 1,
+    'lr': 0.0001,
+    'batch_size': 64,
+    'device': 'cuda'
+    }
+    scales = int(round(math.log(args.width // args.latent_width, 2)))
+    encoder = Encoder(scales, args.depth, args.latent, args.colors).to(device)
+    decoder = Decoder(scales, args.depth, args.latent, args.colors).to(device)
+    critic = Discriminator(scales, args.advdepth, args.latent, args.colors).to(device)
 
-    encoder = Encoder().to(device)
-    decoder = Decoder().to(device)
-    critic = Critic().to(device)
+    ae_opt = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args_set['lr'], weight_decay=1e-5)
+    critic_opt = optim.Adam(critic.parameters(), lr=args_set['lr'], weight_decay=1e-5)
 
-    ae_opt = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()) , lr=args.lr)
-    critic_opt = optim.Adam(critic.parameters(), lr=args.lr)
-
-    #ae_scheduler = StepLR(ae_opt, step_size=2, gamma=args.gamma, verbose=True)
-    #critic_scheduler = StepLR(critic_opt, step_size=2, gamma=args.gamma, verbose=True)
     for epoch in range(1, args.epochs + 1):
         print(f'epoch: {epoch}')
         train(args, encoder, decoder, critic, device, train_loader, ae_opt, critic_opt, epoch)
-        #test(model, device, test_loader)
-        #ae_scheduler.step()
-        #critic_scheduler.step()
-
-        #output_rep(encoder, decoder, critic, device, train_loader, test_loader)
 
     output_rep(encoder, decoder, critic, device, train_loader, test_loader)
 

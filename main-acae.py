@@ -15,8 +15,6 @@ import numpy as np
 GAMMA=0.2
 LAMBDA=0.5
 
-
-
 now = datetime.now()
 current_time = now.strftime("%H:%M:%S")
 writer = SummaryWriter(logdir=f'acae_log/acae_log_{current_time}')
@@ -155,32 +153,6 @@ def train(args, encoder, decoder, critic, device, train_loader, ae_opt, critic_o
     writer.add_scalar('data/ae_loss', sum_ae_loss, epoch)
     print(f'epoch: {epoch}, critic loss: {sum_critic_loss}, ae loss: {sum_ae_loss}')
 
-'''
-def test(encoder, decoder, critic, device, test_loader):
-    #model.eval()
-    encoder.eval()
-    decoder.eval()
-    critic.eval()
-
-    test_ae_loss = 0
-    correct = 0
-    ce_loss = nn.CrossEntropyLoss(reduction='mean')
-    with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            
-            output, h = model(data)
-            test_ae_loss += F.mse_loss(output, data, reduction='mean').item()  # sum up batch loss 
-            #pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            #correct += pred.eq(target.view_as(pred)).sum().item()
-
-    #test_loss /= len(test_loader.dataset)
-
-    print('Test set: Average ae loss: {:.8f})'.format(test_ae_loss))
-    #print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-    #	test_loss, correct, len(test_loader.dataset),
-    #	100. * correct / len(test_loader.dataset)))
-'''
 
 def output_rep(encoder, decoder, critic, device, train_loader, test_loader):
     encoder.eval()
@@ -282,27 +254,13 @@ def main():
     train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
      
-    args_set = {
-    'epochs': 100,
-    'width': 32,
-    'latent_width': 4,
-    'depth': 16,
-    'advdepth': 16,
-    'advweight': 0.5,
-    'reg': 0.2,
-    'latent': 2,
-    'colors': 1,
-    'lr': 0.0001,
-    'batch_size': 64,
-    'device': 'cuda'
-    }
     scales = int(round(math.log(args.width // args.latent_width, 2)))
     encoder = Encoder(scales, args.depth, args.latent, args.colors).to(device)
     decoder = Decoder(scales, args.depth, args.latent, args.colors).to(device)
     critic = Discriminator(scales, args.advdepth, args.latent, args.colors).to(device)
 
-    ae_opt = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args_set['lr'], weight_decay=1e-5)
-    critic_opt = optim.Adam(critic.parameters(), lr=args_set['lr'], weight_decay=1e-5)
+    ae_opt = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr, weight_decay=1e-5)
+    critic_opt = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=1e-5)
 
     for epoch in range(1, args.epochs + 1):
         print(f'epoch: {epoch}')
